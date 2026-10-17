@@ -1,0 +1,15 @@
+# Build output
+target/
+out/
+*.class
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Word lock files
+~$*.docx
