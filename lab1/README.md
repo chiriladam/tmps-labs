@@ -2,6 +2,7 @@
 
 ## Author: Macari Chiril-Adam, FAF-243
 
+**Checked by:** asist. univ. Istrati Daniel<br>
 **Course:** Techniques and Mechanisms of Software Design<br>
 **Laboratory Work No.1:** Creational Design Patterns<br>
 **Domain:** Hotel booking system, implemented in Java (no frameworks or external libraries)
