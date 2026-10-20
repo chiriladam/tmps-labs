@@ -6,3 +6,4 @@
 | Lab | Topic | Folder |
 |---|---|---|
 | Lab 0 | SOLID Principles (SRP, OCP, DIP) in Java | [`lab0`](lab0) |
+| Lab 1 | Creational Design Patterns (Singleton, Factory Method, Builder) – hotel booking system in Java | [`lab1`](lab1) |
