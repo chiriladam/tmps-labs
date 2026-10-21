@@ -13,9 +13,9 @@ public abstract class RoomFactory {
     // the factory method
     protected abstract Room createRoom(int number);
 
-    public Room openRoom(int number) {
+    public Room openRoom(int number, BookingSystem bookingSystem) {
         Room room = createRoom(number);
-        BookingSystem.getInstance().addRoom(room);
+        bookingSystem.addRoom(room);
         return room;
     }
 }

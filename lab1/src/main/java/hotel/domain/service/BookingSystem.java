@@ -6,39 +6,26 @@ import hotel.domain.models.RoomType;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Singleton - the hotel has exactly one booking system, shared by everyone,
- * so all rooms and reservations live in one place and a room cannot be double-booked.
+ * Stores the hotel's rooms and reservations (an in-memory repository).
+ * It is deliberately NOT a Singleton: like a database, it is created once by the
+ * client and passed (injected) to the classes that need it, so it can be replaced
+ * or created fresh in tests.
  */
-public final class BookingSystem {
+public class BookingSystem {
 
-    // volatile: every thread sees the fully constructed instance
-    private static volatile BookingSystem instance;
-
+    private final ReservationNumberGenerator numberGenerator;
     private final Map<Integer, Room> rooms = new LinkedHashMap<>();
-    private final List<Reservation> reservations = new ArrayList<>();
+    private final Map<String, Reservation> reservations = new LinkedHashMap<>();
 
-    // private constructor: nobody outside can call "new BookingSystem()"
-    private BookingSystem() {
-        System.out.println("[BookingSystem] Single instance created");
-    }
-
-    // thread-safe lazy initialization with double-checked locking
-    public static BookingSystem getInstance() {
-        if (instance == null) {
-            synchronized (BookingSystem.class) {
-                if (instance == null) {
-                    instance = new BookingSystem();
-                }
-            }
-        }
-        return instance;
+    // the generator is injected, so the dependency is visible in the constructor
+    public BookingSystem(ReservationNumberGenerator numberGenerator) {
+        this.numberGenerator = numberGenerator;
     }
 
     public synchronized void addRoom(Room room) {
@@ -56,20 +43,22 @@ public final class BookingSystem {
                 .findFirst();
     }
 
-    public synchronized boolean book(Reservation reservation) {
+    // returns the confirmation code, or empty if the room is already taken for those dates
+    public synchronized Optional<String> book(Reservation reservation) {
         if (!isAvailable(reservation.getRoom(), reservation.getCheckIn(), reservation.getCheckOut())) {
-            return false;
+            return Optional.empty();
         }
-        reservations.add(reservation);
-        return true;
+        String code = numberGenerator.next();
+        reservations.put(code, reservation);
+        return Optional.of(code);
     }
 
     public synchronized List<Reservation> getReservations() {
-        return Collections.unmodifiableList(new ArrayList<>(reservations));
+        return new ArrayList<>(reservations.values());
     }
 
     private boolean isAvailable(Room room, LocalDate checkIn, LocalDate checkOut) {
-        return reservations.stream()
+        return reservations.values().stream()
                 .filter(r -> r.getRoom().getNumber() == room.getNumber())
                 .noneMatch(r -> checkIn.isBefore(r.getCheckOut()) && r.getCheckIn().isBefore(checkOut));
     }

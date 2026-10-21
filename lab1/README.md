@@ -51,11 +51,13 @@ The creational patterns are usually divided into two groups:
 - **Holder class (Bill Pugh):** a static nested class holds the instance; the JVM loads it only on first use, which is lazy and thread-safe without explicit locks.
 - **Enum singleton:** `enum Singleton { INSTANCE; }`. Thread-safe and also safe against serialization and reflection.
 
-**When to use.** Shared resources that must exist exactly once: configuration, logging, caches, a connection manager, a registry.
+**When to use.** Objects that must exist exactly once because a second instance would break something: an ID or sequence generator, the application configuration, a logger.
 
 **Drawbacks.** It introduces global state, hides dependencies and makes unit testing harder, so it should be used only when "exactly one" is a real requirement.
 
-**In the hotel domain.** The hotel has one booking system. If every reception desk had its own copy, two desks could sell the same room for the same night.
+**What should not be a Singleton.** A database, a repository or a service that stores application data should **not** be a Singleton, even if the program uses only one of them. Tests need a fresh, empty instance (or a fake one) for every test case, a real application may need several databases or connections, and a globally accessible data store hides which classes depend on it. Such objects should be created once by the client and passed to the classes that need them (dependency injection, as in the Dependency Inversion Principle). The Singleton fits objects whose uniqueness is part of their meaning, where a second instance would cause wrong behaviour: an ID or sequence generator, the application configuration, a logger.
+
+**In the hotel domain.** Confirmation codes (RES-0001, RES-0002, ...) must be unique in the whole hotel. If two generators existed, both would start counting from 1 and two guests would receive the same code, so the generator must exist exactly once.
 
 ### 2.3 Factory Method
 
@@ -134,7 +136,7 @@ The patterns are often combined. For example, an Abstract Factory is usually imp
 
 ## 3. Used Design Patterns
 
-- **Singleton** — `BookingSystem`, the single shared registry of rooms and reservations;
+- **Singleton** — `ReservationNumberGenerator`, which hands out unique confirmation codes;
 - **Factory Method** — `RoomFactory` and its subclasses `SingleRoomFactory`, `DoubleRoomFactory`, `SuiteFactory`;
 - **Builder** — `Reservation.Builder` together with the `ReservationDirector`.
 
@@ -144,7 +146,7 @@ The patterns are often combined. For example, an Abstract Factory is usually imp
 
 ### 4.1 Domain and Project Structure
 
-The project models a small hotel. Rooms of different types are opened through factories, all rooms and reservations are stored in one booking system, and reservations with optional extras are created with a builder. The packages are separated by responsibility, as required: `client` contains the program that uses the domain, and `domain` contains the models, the factories, the builder director and the booking service.
+The project models a small hotel. Rooms of different types are opened through factories, reservations with optional extras are created with a builder, and every confirmed reservation receives a unique code from a single number generator. Rooms and reservations are stored in a `BookingSystem`, which is a regular class: the client creates it once and passes it to the parts that need it. The packages are separated by responsibility, as required: `client` contains the program that uses the domain, and `domain` contains the models, the factories, the builder director and the services.
 
 ```
 src/main/java/hotel/
@@ -166,60 +168,81 @@ src/main/java/hotel/
     ├── builder/
     │   └── ReservationDirector.java  Builder: director with preset packages
     └── service/
-        └── BookingSystem.java     Singleton
+        ├── ReservationNumberGenerator.java  Singleton
+        └── BookingSystem.java     rooms + reservations (injected, not a Singleton)
 ```
 
-### 4.2 Singleton — BookingSystem
+### 4.2 Singleton — ReservationNumberGenerator
 
-`BookingSystem` stores every room and reservation of the hotel. Its constructor is private, and the only way to get the object is `getInstance()`, which uses **double-checked locking** with a `volatile` field. That makes the creation thread-safe while avoiding a lock on every call after the instance exists.
+Every confirmed reservation gets a confirmation code such as `RES-0001`. The codes must be unique in the whole hotel, so there must be exactly one generator. Its constructor is private, and the only way to get the object is `getInstance()`, which uses **double-checked locking** with a `volatile` field. That makes the creation thread-safe while avoiding a lock on every call after the instance exists. The `next()` method is `synchronized`, so two desks booking at the same moment can never receive the same code.
 
 ```java
-public final class BookingSystem {
+public final class ReservationNumberGenerator {
 
     // volatile: every thread sees the fully constructed instance
-    private static volatile BookingSystem instance;
+    private static volatile ReservationNumberGenerator instance;
 
-    private final Map<Integer, Room> rooms = new LinkedHashMap<>();
-    private final List<Reservation> reservations = new ArrayList<>();
+    private int lastNumber = 0;
 
-    // private constructor: nobody outside can call "new BookingSystem()"
-    private BookingSystem() {
-        System.out.println("[BookingSystem] Single instance created");
+    // private constructor: nobody outside can call "new ReservationNumberGenerator()"
+    private ReservationNumberGenerator() {
+        System.out.println("[ReservationNumberGenerator] Single instance created");
     }
 
     // thread-safe lazy initialization with double-checked locking
-    public static BookingSystem getInstance() {
+    public static ReservationNumberGenerator getInstance() {
         if (instance == null) {
-            synchronized (BookingSystem.class) {
+            synchronized (ReservationNumberGenerator.class) {
                 if (instance == null) {
-                    instance = new BookingSystem();
+                    instance = new ReservationNumberGenerator();
                 }
             }
         }
         return instance;
     }
+
+    // synchronized: two desks booking at the same moment never get the same code
+    public synchronized String next() {
+        lastNumber++;
+        return String.format("RES-%04d", lastNumber);
+    }
+}
 ```
 
-Because there is only one booking system, it can enforce a rule that would be impossible with several copies: a room cannot be booked twice for overlapping dates. Its methods are `synchronized`, so two desks booking at the same time cannot both get the same room.
+`BookingSystem`, which stores the rooms and reservations, is deliberately **not** a Singleton. It works like an in-memory database, and a database should be injected rather than accessed globally (see section 2.2). The client creates one `BookingSystem` and passes it to the factories and to the booking code. The generator is also passed to `BookingSystem` through its constructor, so the dependency is visible instead of hidden behind a `getInstance()` call inside the class:
 
 ```java
-public synchronized boolean book(Reservation reservation) {
-    if (!isAvailable(reservation.getRoom(), reservation.getCheckIn(), reservation.getCheckOut())) {
-        return false;
-    }
-    reservations.add(reservation);
-    return true;
+// the generator is injected, so the dependency is visible in the constructor
+public BookingSystem(ReservationNumberGenerator numberGenerator) {
+    this.numberGenerator = numberGenerator;
 }
+```
+
+```java
+// returns the confirmation code, or empty if the room is already taken for those dates
+public synchronized Optional<String> book(Reservation reservation) {
+    if (!isAvailable(reservation.getRoom(), reservation.getCheckIn(), reservation.getCheckOut())) {
+        return Optional.empty();
+    }
+    String code = numberGenerator.next();
+    reservations.put(code, reservation);
+    return Optional.of(code);
+}
+```
+
+```java
+// one booking system for the whole program, passed to everyone who needs it
+BookingSystem bookingSystem = new BookingSystem(ReservationNumberGenerator.getInstance());
 ```
 
 The client checks thread safety by starting 5 threads ("reception desks") that call `getInstance()` at the same time and collecting the objects they receive:
 
 ```java
-// 5 reception desks ask for the booking system at the same time
-Set<BookingSystem> seen = ConcurrentHashMap.newKeySet();
+// 5 reception desks ask for the generator at the same time
+Set<ReservationNumberGenerator> seen = ConcurrentHashMap.newKeySet();
 List<Thread> desks = new ArrayList<>();
 for (int i = 0; i < 5; i++) {
-    desks.add(new Thread(() -> seen.add(BookingSystem.getInstance())));
+    desks.add(new Thread(() -> seen.add(ReservationNumberGenerator.getInstance())));
 }
 for (Thread desk : desks) desk.start();
 for (Thread desk : desks) desk.join();
@@ -228,7 +251,7 @@ System.out.println("Distinct instances seen by 5 threads: " + seen.size());
 
 ### 4.3 Factory Method — RoomFactory
 
-`RoomFactory` is the abstract creator. It declares the factory method `createRoom()` and contains the common logic in `openRoom()`, which creates a room and registers it in the booking system. `openRoom()` works only with the abstract `Room`, so it never needs to know which concrete class was created. That decision belongs to the subclasses.
+`RoomFactory` is the abstract creator. It declares the factory method `createRoom()` and contains the common logic in `openRoom()`, which creates a room and registers it in the booking system it receives as a parameter. `openRoom()` works only with the abstract `Room`, so it never needs to know which concrete class was created. That decision belongs to the subclasses.
 
 ```java
 public abstract class RoomFactory {
@@ -236,9 +259,9 @@ public abstract class RoomFactory {
     // the factory method
     protected abstract Room createRoom(int number);
 
-    public Room openRoom(int number) {
+    public Room openRoom(int number, BookingSystem bookingSystem) {
         Room room = createRoom(number);
-        BookingSystem.getInstance().addRoom(room);
+        bookingSystem.addRoom(room);
         return room;
     }
 }
@@ -264,14 +287,14 @@ Map<RoomType, RoomFactory> factories = Map.of(
         RoomType.SUITE, new SuiteFactory());
 
 // the client only knows RoomFactory, not the concrete room classes
-factories.get(RoomType.SINGLE).openRoom(101);
-factories.get(RoomType.SINGLE).openRoom(102);
-factories.get(RoomType.DOUBLE).openRoom(201);
-factories.get(RoomType.DOUBLE).openRoom(202);
-factories.get(RoomType.SUITE).openRoom(301);
+factories.get(RoomType.SINGLE).openRoom(101, bookingSystem);
+factories.get(RoomType.SINGLE).openRoom(102, bookingSystem);
+factories.get(RoomType.DOUBLE).openRoom(201, bookingSystem);
+factories.get(RoomType.DOUBLE).openRoom(202, bookingSystem);
+factories.get(RoomType.SUITE).openRoom(301, bookingSystem);
 ```
 
-This also shows how creational patterns work together: the Factory Method registers every new room in the Singleton.
+The rooms created by the factories are registered in the booking system, and the reservations built later are made for these rooms, so the three patterns work on the same objects.
 
 ### 4.4 Builder — Reservation.Builder and ReservationDirector
 
@@ -350,8 +373,8 @@ public Reservation businessTrip(String guestName, Room room, LocalDate checkIn, 
 Running `hotel.client.Main` produces the following output:
 
 ```
-=== 1. Singleton: BookingSystem ===
-[BookingSystem] Single instance created
+=== 1. Singleton: ReservationNumberGenerator ===
+[ReservationNumberGenerator] Single instance created
 Distinct instances seen by 5 threads: 1
 getInstance() == getInstance(): true
 
@@ -363,20 +386,20 @@ Room 202 (DOUBLE) - 90 EUR/night, up to 2 guest(s), Wi-Fi, Queen bed, City view
 Room 301 (SUITE) - 180 EUR/night, up to 4 guest(s), Wi-Fi, King bed, Living room, Jacuzzi
 
 === 3. Builder: creating reservations ===
-BOOKED   Maria Popescu | room 201 (DOUBLE) | 2026-11-10 -> 2026-11-13 (3 nights) | 2 guest(s) | extras: breakfast parking | request: Room on a high floor | total: 390 EUR
-BOOKED   Ion Rusu | room 301 (SUITE) | 2026-11-13 -> 2026-11-15 (2 nights) | 2 guest(s) | extras: breakfast | request: Late check-out | total: 420 EUR
-BOOKED   Elena Ciobanu | room 101 (SINGLE) | 2026-11-10 -> 2026-11-12 (2 nights) | 1 guest(s) | extras: breakfast parking airport-transfer | request: - | total: 200 EUR
+BOOKED   RES-0001 | Maria Popescu | room 201 (DOUBLE) | 2026-11-10 -> 2026-11-13 (3 nights) | 2 guest(s) | extras: breakfast parking | request: Room on a high floor | total: 390 EUR
+BOOKED   RES-0002 | Ion Rusu | room 301 (SUITE) | 2026-11-13 -> 2026-11-15 (2 nights) | 2 guest(s) | extras: breakfast | request: Late check-out | total: 420 EUR
+BOOKED   RES-0003 | Elena Ciobanu | room 101 (SINGLE) | 2026-11-10 -> 2026-11-12 (2 nights) | 1 guest(s) | extras: breakfast parking airport-transfer | request: - | total: 200 EUR
 Invalid reservation not built: Room 101 (SINGLE) fits at most 1 guest(s), requested 3
-REJECTED Victor Moraru | room 301 (SUITE) | 2026-11-14 -> 2026-11-16 (2 nights) | 1 guest(s) | extras: none | request: - | total: 360 EUR
+REJECTED | Victor Moraru | room 301 (SUITE) | 2026-11-14 -> 2026-11-16 (2 nights) | 1 guest(s) | extras: none | request: - | total: 360 EUR
 Total reservations: 3, total revenue: 1010 EUR
 ```
 
 The output confirms that each pattern behaves as intended:
 
-- **Singleton:** five threads requested the booking system at the same time, yet the constructor ran only once and all of them received the same object.
+- **Singleton:** five threads requested the number generator at the same time, yet the constructor ran only once and all of them received the same object. The three confirmed reservations received consecutive, unique codes (RES-0001 to RES-0003).
 - **Factory Method:** five rooms of three types were created through the `RoomFactory` abstraction and registered in the booking system, each with the price, capacity and amenities of its type.
 - **Builder:** one custom reservation and two preset packages from the Director were built and booked, with totals computed from the chosen extras (for example, 3 nights × 90 EUR + breakfast 3 × 2 × 15 EUR + parking 3 × 10 EUR = 390 EUR). The builder refused to create a reservation for 3 guests in a single room.
-- **Patterns working together:** the booking for the suite on 14–16 November was rejected because it overlaps the weekend package. This works only because every part of the program shares the same `BookingSystem` instance.
+- **Booking system:** the booking for the suite on 14–16 November was rejected because it overlaps the weekend package, and it did not consume a confirmation code. This works because the client created one `BookingSystem` and passed the same object to every part of the program, without making it a Singleton.
 
 ---
 
@@ -384,11 +407,11 @@ The output confirms that each pattern behaves as intended:
 
 In this laboratory work I studied the creational design patterns and implemented three of them in a hotel booking system. Each pattern solved a concrete problem of the domain:
 
-- **Singleton** guarantees that the whole application works with one booking system, which keeps all rooms and reservations in one place and prevents double bookings. Making it thread-safe with double-checked locking was essential, since several reception desks can access it at the same time.
+- **Singleton** guarantees that the hotel has exactly one reservation number generator, so confirmation codes are never duplicated. Making it thread-safe with double-checked locking and a `synchronized` `next()` method was essential, since several reception desks can book at the same time. An important lesson was choosing *what* to make a Singleton: the booking system stores data like a database, so it is injected instead, which keeps it replaceable and testable.
 - **Factory Method** removed the dependency of the client on concrete room classes. New room types can be added by writing a new factory, without touching the existing code, which also follows the Open/Closed Principle from the previous laboratory work.
 - **Builder** made it possible to create reservations with many optional parameters in a readable way, to validate them before creation and to keep them immutable. The Director added reusable presets for the hotel's standard packages.
 
-The patterns also complement each other: the factories register their rooms in the Singleton, and the builder creates reservations for rooms that the factories produced. The remaining patterns — Abstract Factory, Prototype and Object Pool — solve related problems (families of objects, cloning, and reusing expensive objects). They were described in the theoretical part with examples of how they could extend this project.
+The patterns also complement each other: the factories create the rooms, the builder creates reservations for those rooms, and the Singleton numbers every confirmed booking. The remaining patterns — Abstract Factory, Prototype and Object Pool — solve related problems (families of objects, cloning, and reusing expensive objects). They were described in the theoretical part with examples of how they could extend this project.
 
 Overall, creational patterns move the responsibility of *creating* objects away from the code that *uses* them, which results in code that is easier to extend, test and maintain.
 
