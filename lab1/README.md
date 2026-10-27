@@ -172,9 +172,19 @@ src/main/java/hotel/
         └── BookingSystem.java     rooms + reservations (injected, not a Singleton)
 ```
 
+Figure 1 shows the architecture of the project: the packages, the classes that belong to each pattern and how they depend on each other. The numbered arrows from `Main` follow the order in which the client uses the patterns.
+
+![Figure 1. Architecture of the hotel booking system](diagrams/1-architecture.png)
+
+*Figure 1. Architecture of the hotel booking system (red: Singleton, blue: Factory Method, green: Builder)*
+
 ### 4.2 Singleton — ReservationNumberGenerator
 
 Every confirmed reservation gets a confirmation code such as `RES-0001`. The codes must be unique in the whole hotel, so there must be exactly one generator. Its constructor is private, and the only way to get the object is `getInstance()`, which uses **double-checked locking** with a `volatile` field. That makes the creation thread-safe while avoiding a lock on every call after the instance exists. The `next()` method is `synchronized`, so two desks booking at the same moment can never receive the same code.
+
+![Figure 2. Singleton class diagram](diagrams/2-singleton.png)
+
+*Figure 2. Singleton: ReservationNumberGenerator holds its only instance in a static field; BookingSystem receives it through the constructor*
 
 ```java
 public final class ReservationNumberGenerator {
@@ -253,6 +263,10 @@ System.out.println("Distinct instances seen by 5 threads: " + seen.size());
 
 `RoomFactory` is the abstract creator. It declares the factory method `createRoom()` and contains the common logic in `openRoom()`, which creates a room and registers it in the booking system it receives as a parameter. `openRoom()` works only with the abstract `Room`, so it never needs to know which concrete class was created. That decision belongs to the subclasses.
 
+![Figure 3. Factory Method class diagram](diagrams/3-factory-method.png)
+
+*Figure 3. Factory Method: each concrete creator overrides createRoom() and creates its own concrete product*
+
 ```java
 public abstract class RoomFactory {
 
@@ -299,6 +313,10 @@ The rooms created by the factories are registered in the booking system, and the
 ### 4.4 Builder — Reservation.Builder and ReservationDirector
 
 A `Reservation` has 4 required fields and 5 optional ones. Its constructor is **private** and takes a `Builder`, so a reservation can only be created through the builder. The required fields are passed to the builder's constructor, the optional ones are set with chained methods, and `build()` validates the data before the object is created.
+
+![Figure 4. Builder class diagram](diagrams/4-builder.png)
+
+*Figure 4. Builder: the client builds custom reservations directly or uses the Director's preset recipes; only build() can create a Reservation*
 
 ```java
 // private: the only way to create a Reservation is through the Builder
@@ -365,6 +383,14 @@ public Reservation businessTrip(String guestName, Room room, LocalDate checkIn, 
             .build();
 }
 ```
+
+### 4.5 Runtime Flow
+
+The sequence diagram in Figure 5 shows how the three patterns cooperate when the first reservation is made. The client gets the single number generator and creates the booking system with it (Singleton). It opens room 201 through a factory, which decides the concrete room class (Factory Method). It then builds and validates Maria's reservation step by step (Builder). Finally, the booking system checks that the room is free and asks the generator for the confirmation code `RES-0001`.
+
+![Figure 5. Runtime flow of the first reservation](diagrams/5-runtime-flow.png)
+
+*Figure 5. Sequence diagram: how Singleton, Factory Method and Builder work together to create and book the first reservation*
 
 ---
 
@@ -433,6 +459,8 @@ java -cp out hotel.client.Main
 ```
 
 The report is also available in Word format: [`report/Report_Lab1.docx`](report/Report_Lab1.docx).
+
+The diagrams are in [`diagrams/`](diagrams): PNG images plus their Mermaid sources (`.mmd`), which can be edited and re-rendered.
 
 ---
 

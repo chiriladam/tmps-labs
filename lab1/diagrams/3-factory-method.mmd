@@ -1,0 +1,53 @@
+classDiagram
+    direction TB
+    class RoomFactory {
+        <<abstract · Creator>>
+        #createRoom(int number)* Room
+        +openRoom(int number, BookingSystem bookingSystem) Room
+    }
+    class SingleRoomFactory {
+        <<Concrete Creator>>
+        #createRoom(int number) Room
+    }
+    class DoubleRoomFactory {
+        <<Concrete Creator>>
+        #createRoom(int number) Room
+    }
+    class SuiteFactory {
+        <<Concrete Creator>>
+        #createRoom(int number) Room
+    }
+    class Room {
+        <<abstract · Product>>
+        -int number
+        -RoomType type
+        -int pricePerNight
+        -int capacity
+        -List~String~ amenities
+    }
+    class SingleRoom {
+        <<Concrete Product>>
+    }
+    class DoubleRoom {
+        <<Concrete Product>>
+    }
+    class Suite {
+        <<Concrete Product>>
+    }
+    class BookingSystem {
+        +addRoom(Room room)
+    }
+    RoomFactory <|-- SingleRoomFactory
+    RoomFactory <|-- DoubleRoomFactory
+    RoomFactory <|-- SuiteFactory
+    Room <|-- SingleRoom
+    Room <|-- DoubleRoom
+    Room <|-- Suite
+    SingleRoomFactory ..> SingleRoom : creates
+    DoubleRoomFactory ..> DoubleRoom : creates
+    SuiteFactory ..> Suite : creates
+    RoomFactory ..> Room : works only with the abstraction
+    RoomFactory ..> BookingSystem : addRoom()
+    note for RoomFactory "openRoom() = shared logic:
+1. room = createRoom(number)  (factory method)
+2. bookingSystem.addRoom(room)"

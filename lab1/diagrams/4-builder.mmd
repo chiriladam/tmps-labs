@@ -1,0 +1,43 @@
+classDiagram
+    direction TB
+    class Main {
+        <<client>>
+    }
+    class ReservationDirector {
+        <<Director>>
+        +weekendGetaway(guestName, room, friday) Reservation
+        +businessTrip(guestName, room, checkIn, nights) Reservation
+    }
+    class Builder["Reservation.Builder"] {
+        <<Builder>>
+        -String guestName
+        -Room room
+        -LocalDate checkIn
+        -LocalDate checkOut
+        -int guests = 1
+        -boolean breakfast
+        -boolean parking
+        -boolean airportTransfer
+        -String specialRequest
+        +Builder(String guestName, Room room, LocalDate checkIn, LocalDate checkOut)
+        +guests(int guests) Builder
+        +withBreakfast() Builder
+        +withParking() Builder
+        +withAirportTransfer() Builder
+        +specialRequest(String request) Builder
+        +build() Reservation
+    }
+    class Reservation {
+        <<Product>>
+        -final fields (immutable)
+        -Reservation(Builder builder)
+        +getNights() long
+        +getTotalPrice() long
+    }
+    Main ..> Builder : custom reservation, step by step
+    Main ..> ReservationDirector : preset packages
+    ReservationDirector ..> Builder : runs a fixed recipe of steps
+    Builder ..> Reservation : build() validates, then creates
+    note for Builder "required fields: constructor
+optional fields: chained methods (return this)
+build(): checks dates and capacity first"

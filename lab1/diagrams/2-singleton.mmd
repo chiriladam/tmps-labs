@@ -1,0 +1,28 @@
+classDiagram
+    direction TB
+    class Main {
+        <<client>>
+        +main(String[] args)
+    }
+    class ReservationNumberGenerator {
+        <<Singleton>>
+        -ReservationNumberGenerator instance$
+        -int lastNumber
+        -ReservationNumberGenerator()
+        +getInstance()$ ReservationNumberGenerator
+        +next() String
+    }
+    class BookingSystem {
+        -ReservationNumberGenerator numberGenerator
+        -Map~Integer, Room~ rooms
+        -Map~String, Reservation~ reservations
+        +BookingSystem(ReservationNumberGenerator numberGenerator)
+        +book(Reservation reservation) Optional~String~
+    }
+    Main ..> ReservationNumberGenerator : getInstance()
+    Main ..> BookingSystem : creates once and injects the generator
+    BookingSystem --> ReservationNumberGenerator : next()
+    ReservationNumberGenerator --> ReservationNumberGenerator : static instance
+    note for ReservationNumberGenerator "private constructor: no one else can call new
+getInstance(): double-checked locking + volatile
+next(): synchronized, so codes are always unique"

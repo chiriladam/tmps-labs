@@ -1,0 +1,45 @@
+flowchart TB
+    subgraph client["client"]
+        Main["<b>Main</b><br/>runs the demo, wires everything together"]
+    end
+
+    subgraph domain["domain"]
+        direction TB
+        subgraph factory["factory  (Factory Method)"]
+            RF["<b>RoomFactory</b> «abstract»<br/>openRoom() / createRoom()"]
+            CF["SingleRoomFactory · DoubleRoomFactory · SuiteFactory"]
+        end
+        subgraph builder["builder  (Builder: Director)"]
+            RD["<b>ReservationDirector</b><br/>weekendGetaway() · businessTrip()"]
+        end
+        subgraph models["models"]
+            R["<b>Room</b> «abstract»<br/>SingleRoom · DoubleRoom · Suite · RoomType"]
+            RES["<b>Reservation</b><br/>+ nested Reservation.Builder"]
+        end
+        subgraph service["service"]
+            BS["<b>BookingSystem</b><br/>rooms + reservations<br/>(created once, injected; not a Singleton)"]
+            G["<b>ReservationNumberGenerator</b><br/>«Singleton»"]
+        end
+    end
+
+    Main -- "1: getInstance()" --> G
+    Main -- "2: new BookingSystem(generator)" --> BS
+    Main -- "3: openRoom(number, bookingSystem)" --> RF
+    Main -- "4: custom reservation" --> RES
+    Main -- "4: preset packages" --> RD
+    Main -- "5: book(reservation)" --> BS
+    CF -. "extends" .-> RF
+    RF -- "createRoom() creates" --> R
+    RF -- "addRoom()" --> BS
+    RD -- "uses the Builder" --> RES
+    RES -- "is booked for a" --> R
+    BS -- "next() → RES-0001" --> G
+
+    classDef singleton fill:#fde8e8,stroke:#c0392b,stroke-width:2px,color:#000
+    classDef fm fill:#e8f1fd,stroke:#2c6db5,color:#000
+    classDef bld fill:#e8f8ec,stroke:#27864a,color:#000
+    classDef plain fill:#f5f5f5,stroke:#888,color:#000
+    class G singleton
+    class RF,CF fm
+    class RD,RES bld
+    class Main,BS,R plain

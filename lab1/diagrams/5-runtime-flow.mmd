@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    participant M as Main (client)
+    participant G as ReservationNumberGenerator «Singleton»
+    participant BS as BookingSystem
+    participant F as DoubleRoomFactory
+    participant B as Reservation.Builder
+
+    rect rgb(253, 232, 232)
+    Note over M,G: Singleton
+    M->>G: getInstance()
+    G-->>M: the single instance (created on first call)
+    M->>BS: new BookingSystem(generator)
+    end
+
+    rect rgb(232, 241, 253)
+    Note over M,F: Factory Method
+    M->>F: openRoom(201, bookingSystem)
+    F->>F: createRoom(201) → new DoubleRoom(201)
+    F->>BS: addRoom(room 201)
+    end
+
+    rect rgb(232, 248, 236)
+    Note over M,B: Builder
+    M->>B: new Builder("Maria Popescu", room 201, Nov 10, Nov 13)
+    M->>B: guests(2).withBreakfast().withParking().specialRequest(...)
+    M->>B: build()
+    B->>B: validate dates and capacity
+    B-->>M: Reservation (immutable)
+    end
+
+    M->>BS: book(reservation)
+    BS->>BS: is room 201 free on Nov 10–13?
+    BS->>G: next()
+    G-->>BS: "RES-0001"
+    BS-->>M: Optional["RES-0001"]
