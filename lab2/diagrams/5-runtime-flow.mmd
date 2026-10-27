@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    participant M as Main (client)
+    participant FD as FrontDesk «Facade»
+    participant BS as BookingSystem
+    participant P as TouristTax → WeekendSurcharge → BasePrice
+    participant CP as CardPayment «Adapter»
+    participant PF as PayFlowClient (external)
+
+    M->>FD: bookRoom(maria, DOUBLE, Nov 12, Nov 15, 2 guests, card)
+    FD->>BS: findAvailableRoom(DOUBLE, Nov 12, Nov 15)
+    BS-->>FD: room 201
+    FD->>FD: new Reservation.Builder(...).guests(2).build()
+
+    rect rgb(232, 248, 236)
+    Note over FD,P: Decorator: each rule asks the one it wraps first
+    FD->>P: calculate(reservation)
+    P->>P: BasePrice 270.00
+    P->>P: + weekend surcharge 36.00 = 306.00
+    P->>P: + tourist tax 9.00 = 315.00
+    P-->>FD: 315.00
+    end
+
+    FD->>BS: book(reservation)
+    BS-->>FD: "RES-0001"
+
+    rect rgb(232, 241, 253)
+    Note over FD,PF: Adapter: our interface → the external SDK
+    FD->>CP: pay(315.00, "RES-0001")
+    CP->>PF: createCharge("tok_visa_4242", 31500, "EUR", "RES-0001")
+    PF-->>CP: PayFlowResponse(200, "pf_1001", "approved")
+    CP-->>FD: PaymentResult(successful, "pf_1001")
+    end
+
+    FD-->>M: CONFIRMED RES-0001, 315.00 EUR paid by card

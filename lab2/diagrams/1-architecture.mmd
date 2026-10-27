@@ -1,0 +1,53 @@
+flowchart LR
+    Main["<b>Main</b><br/>«client»<br/>the only client"]
+    FD["<b>FrontDesk</b> «Facade»<br/>(domain.service)<br/>single entry point"]
+
+    subgraph payment["domain.payment  «Adapter»"]
+        direction LR
+        PM["<b>PaymentMethod</b> «interface»<br/>implemented by CashPayment<br/>and CardPayment"]
+        CP["<b>CardPayment</b><br/>euros → cents<br/>status code → result"]
+    end
+
+    subgraph external["external.payflow (third-party SDK)"]
+        PF["<b>PayFlowClient</b><br/>createCharge(token, cents, ...)"]
+    end
+
+    subgraph pricing["domain.pricing  «Decorator»"]
+        direction LR
+        PA["<b>TouristTax / LoyaltyDiscount /<br/>WeekendSurcharge</b><br/>(PriceAdjustment)"]
+        BP["<b>BasePrice</b><br/>(PriceCalculator)"]
+    end
+
+    subgraph service["domain.service"]
+        direction LR
+        BS["<b>BookingSystem</b><br/>rooms + reservations"]
+        G["<b>ReservationNumberGenerator</b><br/>«Singleton» (Lab 1)"]
+    end
+
+    subgraph lab1["domain.factory · domain.builder · domain.models  (Lab 1)"]
+        direction LR
+        RF["<b>RoomFactory</b> + subclasses<br/>«Factory Method»"]
+        RB["<b>Reservation.Builder</b> ·<br/>ReservationDirector «Builder»"]
+    end
+
+    Main -- "openRoom · quote · bookRoom ·<br/>bookWeekendGetaway · bookBusinessTrip" --> FD
+    FD -- "pay()" --> PM
+    PM --> CP
+    CP -- "calls" --> PF
+    FD -- "calculate price" --> PA
+    PA -- "wraps" --> BP
+    FD -- "find room · book · cancel" --> BS
+    BS -- "next()" --> G
+    FD -- "open rooms" --> RF
+    FD -- "build reservation" --> RB
+
+    classDef facade fill:#fff3d6,stroke:#c98a00,stroke-width:2px,color:#000
+    classDef adapter fill:#e8f1fd,stroke:#2c6db5,stroke-width:2px,color:#000
+    classDef decorator fill:#e8f8ec,stroke:#27864a,stroke-width:2px,color:#000
+    classDef ext fill:#eeeeee,stroke:#666,stroke-dasharray: 4 3,color:#000
+    classDef plain fill:#f7f7f7,stroke:#999,color:#000
+    class FD facade
+    class PM,CP adapter
+    class PA,BP decorator
+    class PF ext
+    class Main,BS,G,RF,RB plain

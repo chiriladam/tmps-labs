@@ -1,0 +1,37 @@
+classDiagram
+    direction TB
+    class FrontDesk {
+        <<client of the interface>>
+    }
+    class PaymentMethod {
+        <<interface · Target>>
+        +pay(double amountEur, String reference) PaymentResult
+    }
+    class CashPayment {
+        +pay(double amountEur, String reference) PaymentResult
+    }
+    class CardPayment {
+        <<Adapter>>
+        -PayFlowClient payFlow
+        -String cardToken
+        +CardPayment(PayFlowClient payFlow, String cardToken)
+        +pay(double amountEur, String reference) PaymentResult
+    }
+    class PayFlowClient {
+        <<external SDK · Adaptee>>
+        +createCharge(String cardToken, long amountInCents, String currency, String description) PayFlowResponse
+    }
+    class PayFlowResponse {
+        <<record>>
+        +int status
+        +String chargeId
+        +String message
+    }
+    FrontDesk --> PaymentMethod : pay()
+    PaymentMethod <|.. CashPayment
+    PaymentMethod <|.. CardPayment
+    CardPayment --> PayFlowClient : wraps and calls createCharge()
+    PayFlowClient ..> PayFlowResponse : returns
+    note for CardPayment "euros → cents (Math.round(amount * 100))
+status 200 → successful PaymentResult
+other status → failed PaymentResult"

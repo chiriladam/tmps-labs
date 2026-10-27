@@ -1,0 +1,42 @@
+classDiagram
+    direction TB
+    class PriceCalculator {
+        <<interface · Component>>
+        +calculate(Reservation reservation) double
+        +breakdown(Reservation reservation) String
+    }
+    class BasePrice {
+        <<Concrete Component>>
+        +calculate(Reservation) double
+        +breakdown(Reservation) String
+    }
+    class PriceAdjustment {
+        <<abstract · Decorator>>
+        -PriceCalculator wrapped
+        #PriceAdjustment(PriceCalculator wrapped)
+        #adjustment(Reservation, double priceSoFar)* double
+        #label()* String
+        +calculate(Reservation) double
+        +breakdown(Reservation) String
+    }
+    class WeekendSurcharge {
+        <<Concrete Decorator>>
+        +20% room price per Fri/Sat night
+    }
+    class LoyaltyDiscount {
+        <<Concrete Decorator>>
+        -10% of the price so far
+    }
+    class TouristTax {
+        <<Concrete Decorator>>
+        +1.50 EUR per guest per night
+    }
+    PriceCalculator <|.. BasePrice
+    PriceCalculator <|.. PriceAdjustment
+    PriceAdjustment o--> PriceCalculator : wraps
+    PriceAdjustment <|-- WeekendSurcharge
+    PriceAdjustment <|-- LoyaltyDiscount
+    PriceAdjustment <|-- TouristTax
+    note for PriceAdjustment "calculate() = wrapped.calculate() + adjustment()
+Stack for a loyalty member:
+TouristTax( LoyaltyDiscount( WeekendSurcharge( BasePrice ) ) )"

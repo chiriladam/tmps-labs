@@ -1,0 +1,42 @@
+classDiagram
+    direction TB
+    class Main {
+        <<client>>
+    }
+    class FrontDesk {
+        <<Facade>>
+        -BookingSystem bookingSystem
+        -ReservationDirector packages
+        -Map~RoomType, RoomFactory~ roomFactories
+        +openRoom(type, number)
+        +rooms() List~Room~
+        +quote(guest, type, checkIn, checkOut, guests) String
+        +bookRoom(guest, type, checkIn, checkOut, guests, payment) BookingResult
+        +bookWeekendGetaway(guest, friday, payment) BookingResult
+        +bookBusinessTrip(guest, checkIn, nights, payment) BookingResult
+        -book(...) BookingResult
+        -pricingFor(guest) PriceCalculator
+    }
+    class RoomFactory {
+        <<subsystem>>
+    }
+    class ReservationBuilder["Reservation.Builder / ReservationDirector"] {
+        <<subsystem>>
+    }
+    class BookingSystem {
+        <<subsystem>>
+    }
+    class PriceCalculator {
+        <<subsystem>>
+    }
+    class PaymentMethod {
+        <<subsystem>>
+    }
+    Main --> FrontDesk : one simple call
+    FrontDesk --> RoomFactory : 0. open rooms
+    FrontDesk --> BookingSystem : 1. find room 4. book / cancel
+    FrontDesk --> ReservationBuilder : 2. build reservation
+    FrontDesk --> PriceCalculator : 3. calculate price
+    FrontDesk --> PaymentMethod : 5. take payment
+    note for FrontDesk "Main never touches the subsystems:
+it only calls FrontDesk methods"
