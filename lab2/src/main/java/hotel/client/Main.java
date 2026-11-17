@@ -5,9 +5,7 @@ import hotel.domain.models.Guest;
 import hotel.domain.models.RoomType;
 import hotel.domain.payment.CardPayment;
 import hotel.domain.payment.CashPayment;
-import hotel.domain.service.BookingSystem;
 import hotel.domain.service.FrontDesk;
-import hotel.domain.service.ReservationNumberGenerator;
 import hotel.external.payflow.PayFlowClient;
 import hotel.utilities.Money;
 
@@ -21,8 +19,8 @@ import java.util.List;
 public class Main {
     public static void main(String[] args) {
         System.out.println("=== Opening the hotel ===");
-        FrontDesk frontDesk = new FrontDesk(new BookingSystem(ReservationNumberGenerator.getInstance()));
-        PayFlowClient payFlow = new PayFlowClient();   // external card payment SDK
+        FrontDesk frontDesk = HotelConfiguration.frontDesk();
+        PayFlowClient payFlow = new PayFlowClient();   // simulated card payment gateway
 
         frontDesk.openRoom(RoomType.SINGLE, 101);
         frontDesk.openRoom(RoomType.SINGLE, 102);
@@ -42,12 +40,13 @@ public class Main {
         LocalDate nov15 = LocalDate.of(2026, 11, 15);
 
         System.out.println();
-        System.out.println("=== Price quotes: double room, 2 guests, Nov 12-15 ===");
+        System.out.println("=== Price quotes (Decorator): double room, 2 guests, Nov 12-15 ===");
         System.out.println("Regular guest:  " + frontDesk.quote(maria, RoomType.DOUBLE, nov12, nov15, 2));
         System.out.println("Loyalty member: " + frontDesk.quote(ion, RoomType.DOUBLE, nov12, nov15, 2));
+        System.out.println("Too many guests: " + frontDesk.quote(andrei, RoomType.SINGLE, nov10, nov12, 3));
 
         System.out.println();
-        System.out.println("=== Bookings through the front desk ===");
+        System.out.println("=== Bookings through the front desk (Facade) ===");
         List<BookingResult> results = new ArrayList<>();
         results.add(frontDesk.bookRoom(maria, RoomType.DOUBLE, nov12, nov15, 2, new CardPayment(payFlow, "tok_visa_4242")));
         results.add(frontDesk.bookWeekendGetaway(ion, nov13, new CashPayment()));
@@ -62,5 +61,10 @@ public class Main {
         System.out.println();
         System.out.println("Confirmed: " + confirmed + " of " + results.size() + " requests, revenue: "
                 + Money.eur(revenue) + " EUR");
+
+        System.out.println();
+        System.out.println("=== Calendar invite for " + results.get(0).reservationCode()
+                + " (Adapter over the biweekly library) ===");
+        System.out.print(results.get(0).calendarInvite());
     }
 }

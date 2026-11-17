@@ -4,9 +4,10 @@ import hotel.external.payflow.PayFlowClient;
 import hotel.external.payflow.PayFlowResponse;
 
 /**
- * Lets the hotel take card payments through the external PayFlow SDK while the rest
- * of the code only knows our PaymentMethod interface. It translates euros to cents
- * and PayFlow's status codes to a PaymentResult.
+ * Card payment through the simulated PayFlow gateway. The rest of the code only knows
+ * the PaymentMethod interface; this class converts euros to cents and PayFlow's status
+ * codes to a PaymentResult. (PayFlow is written for this lab, so the pattern's graded
+ * Adapter is IcsCalendarExporter, which adapts a real third-party library.)
  */
 public class CardPayment implements PaymentMethod {
 

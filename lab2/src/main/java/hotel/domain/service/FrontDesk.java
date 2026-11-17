@@ -1,10 +1,8 @@
 package hotel.domain.service;
 
 import hotel.domain.builder.ReservationDirector;
-import hotel.domain.factory.DoubleRoomFactory;
+import hotel.domain.calendar.CalendarExporter;
 import hotel.domain.factory.RoomFactory;
-import hotel.domain.factory.SingleRoomFactory;
-import hotel.domain.factory.SuiteFactory;
 import hotel.domain.models.BookingResult;
 import hotel.domain.models.Guest;
 import hotel.domain.models.Reservation;
@@ -12,11 +10,8 @@ import hotel.domain.models.Room;
 import hotel.domain.models.RoomType;
 import hotel.domain.payment.PaymentMethod;
 import hotel.domain.payment.PaymentResult;
-import hotel.domain.pricing.BasePrice;
-import hotel.domain.pricing.LoyaltyDiscount;
 import hotel.domain.pricing.PriceCalculator;
-import hotel.domain.pricing.TouristTax;
-import hotel.domain.pricing.WeekendSurcharge;
+import hotel.domain.pricing.PricingPolicy;
 import hotel.utilities.Money;
 
 import java.time.LocalDate;
@@ -26,25 +21,35 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * The single entry point of the hotel for the client.
+ * Facade - the single entry point of the hotel for the client.
  * One call here hides the work of the room factories, the reservation builder and
- * director, the booking system, the pricing rules and the payment method.
+ * director, the booking system, the pricing rules, the payment method and the
+ * calendar export. The facade only coordinates: every subsystem is injected through
+ * the constructor and does its own work.
  */
 public class FrontDesk {
 
     private final BookingSystem bookingSystem;
-    private final ReservationDirector packages = new ReservationDirector();
-    private final Map<RoomType, RoomFactory> roomFactories = Map.of(
-            RoomType.SINGLE, new SingleRoomFactory(),
-            RoomType.DOUBLE, new DoubleRoomFactory(),
-            RoomType.SUITE, new SuiteFactory());
+    private final Map<RoomType, RoomFactory> roomFactories;
+    private final ReservationDirector packages;
+    private final PricingPolicy pricingPolicy;
+    private final CalendarExporter calendar;
 
-    public FrontDesk(BookingSystem bookingSystem) {
+    public FrontDesk(BookingSystem bookingSystem, Map<RoomType, RoomFactory> roomFactories,
+                     ReservationDirector packages, PricingPolicy pricingPolicy, CalendarExporter calendar) {
         this.bookingSystem = bookingSystem;
+        this.roomFactories = Map.copyOf(roomFactories);
+        this.packages = packages;
+        this.pricingPolicy = pricingPolicy;
+        this.calendar = calendar;
     }
 
     public void openRoom(RoomType type, int number) {
-        roomFactories.get(type).openRoom(number, bookingSystem);
+        RoomFactory factory = roomFactories.get(type);
+        if (factory == null) {
+            throw new IllegalArgumentException("No factory registered for room type " + type);
+        }
+        factory.openRoom(number, bookingSystem);
     }
 
     public List<Room> rooms() {
@@ -57,10 +62,13 @@ public class FrontDesk {
         if (room.isEmpty()) {
             return "no " + type + " room free from " + checkIn + " to " + checkOut;
         }
-        Reservation stay = new Reservation.Builder(guest.name(), room.get(), checkIn, checkOut)
-                .guests(guests)
-                .build();
-        PriceCalculator pricing = pricingFor(guest);
+        Reservation stay;
+        try {
+            stay = new Reservation.Builder(guest.name(), room.get(), checkIn, checkOut).guests(guests).build();
+        } catch (IllegalStateException e) {
+            return "cannot quote: " + e.getMessage();
+        }
+        PriceCalculator pricing = pricingPolicy.pricingFor(guest);
         return pricing.breakdown(stay) + " = " + Money.eur(pricing.calculate(stay)) + " EUR";
     }
 
@@ -95,31 +103,25 @@ public class FrontDesk {
         } catch (IllegalStateException e) {
             return BookingResult.rejected(guest.name(), e.getMessage());
         }
-        // 3. calculate the price with the pricing rules that apply to this guest
-        PriceCalculator pricing = pricingFor(guest);
+        // 3. calculate the price with the pricing rules (decorators) that apply to this guest
+        PriceCalculator pricing = pricingPolicy.pricingFor(guest);
         double price = pricing.calculate(reservation);
         // 4. reserve the room and get a confirmation code
-        String code = bookingSystem.book(reservation).orElseThrow();
-        // 5. take the payment; if it fails, release the room again
-        PaymentResult paid = payment.pay(price, code);
-        if (!paid.successful()) {
-            bookingSystem.cancel(code);
-            return BookingResult.rejected(guest.name(), paid.message() + " (" + code + " cancelled)");
+        Optional<String> code = bookingSystem.book(reservation);
+        if (code.isEmpty()) {
+            return BookingResult.rejected(guest.name(), "room " + room.get().getNumber() + " was just taken");
         }
+        // 5. take the payment; if it fails, release the room again
+        PaymentResult paid = payment.pay(price, code.get());
+        if (!paid.successful()) {
+            bookingSystem.cancel(code.get());
+            return BookingResult.rejected(guest.name(), paid.message() + " (" + code.get() + " cancelled)");
+        }
+        // 6. create the calendar invite for the guest (Adapter over the biweekly library)
+        String invite = calendar.export(code.get(), reservation);
         String details = String.format("room %d (%s) | %s -> %s | %s EUR %s (%s)%n          price: %s",
                 room.get().getNumber(), type, checkIn, checkOut, Money.eur(price),
                 paid.message(), paid.transactionId(), pricing.breakdown(reservation));
-        return BookingResult.confirmed(code, guest.name(), details, price);
-    }
-
-    // stacks the pricing rules that apply to this guest
-    private PriceCalculator pricingFor(Guest guest) {
-        PriceCalculator pricing = new BasePrice();
-        pricing = new WeekendSurcharge(pricing);
-        if (guest.loyaltyMember()) {
-            pricing = new LoyaltyDiscount(pricing);
-        }
-        pricing = new TouristTax(pricing);   // added last, so taxes are never discounted
-        return pricing;
+        return BookingResult.confirmed(code.get(), guest.name(), details, price, invite);
     }
 }

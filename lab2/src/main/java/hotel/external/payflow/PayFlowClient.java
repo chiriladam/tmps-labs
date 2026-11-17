@@ -1,9 +1,9 @@
 package hotel.external.payflow;
 
 /**
- * Simulates a third-party card payment SDK called "PayFlow".
- * We cannot change this code: it works in cents, expects an ISO currency code
- * and reports the result through HTTP-like status codes (200 = approved).
+ * A simulated card payment gateway called "PayFlow", standing in for a real provider
+ * so the demo runs offline. It works in cents, expects an ISO currency code and reports
+ * the result through HTTP-like status codes (200 = approved, 402 = declined).
  */
 public class PayFlowClient {
 
