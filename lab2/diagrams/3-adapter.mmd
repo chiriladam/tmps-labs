@@ -1,37 +1,40 @@
 classDiagram
     direction TB
     class FrontDesk {
-        <<client of the interface>>
+        <<client of the Target>>
     }
-    class PaymentMethod {
+    class CalendarExporter {
         <<interface · Target>>
-        +pay(double amountEur, String reference) PaymentResult
+        +export(String reservationCode, Reservation reservation) String
     }
-    class CashPayment {
-        +pay(double amountEur, String reference) PaymentResult
-    }
-    class CardPayment {
+    class IcsCalendarExporter {
         <<Adapter>>
-        -PayFlowClient payFlow
-        -String cardToken
-        +CardPayment(PayFlowClient payFlow, String cardToken)
-        +pay(double amountEur, String reference) PaymentResult
+        +export(String reservationCode, Reservation reservation) String
+        -toDate(LocalDate date)$ Date
     }
-    class PayFlowClient {
-        <<external SDK · Adaptee>>
-        +createCharge(String cardToken, long amountInCents, String currency, String description) PayFlowResponse
+    class VEvent {
+        <<Adaptee · biweekly library>>
+        +setUid(String) Uid
+        +setSummary(String) Summary
+        +setLocation(String) Location
+        +setDescription(String) Description
+        +setDateStart(Date date, boolean hasTime) DateStart
+        +setDateEnd(Date date, boolean hasTime) DateEnd
     }
-    class PayFlowResponse {
-        <<record>>
-        +int status
-        +String chargeId
-        +String message
+    class ICalendar {
+        <<Adaptee · biweekly library>>
+        +addEvent(VEvent event)
     }
-    FrontDesk --> PaymentMethod : pay()
-    PaymentMethod <|.. CashPayment
-    PaymentMethod <|.. CardPayment
-    CardPayment --> PayFlowClient : wraps and calls createCharge()
-    PayFlowClient ..> PayFlowResponse : returns
-    note for CardPayment "euros → cents (Math.round(amount * 100))
-status 200 → successful PaymentResult
-other status → failed PaymentResult"
+    class Biweekly {
+        <<Adaptee · biweekly library>>
+        +write(ICalendar... calendars)$ ChainingTextWriter
+    }
+    FrontDesk --> CalendarExporter : export(code, reservation)
+    CalendarExporter <|.. IcsCalendarExporter : implements
+    IcsCalendarExporter ..> VEvent : creates and fills
+    IcsCalendarExporter ..> ICalendar : creates
+    IcsCalendarExporter ..> Biweekly : write(calendar).go()
+    ICalendar o-- VEvent : has
+    note for IcsCalendarExporter "LocalDate → java.util.Date (all-day: hasTime = false)
+reservation code → UID, room → LOCATION
+biweekly object model → iCalendar text"

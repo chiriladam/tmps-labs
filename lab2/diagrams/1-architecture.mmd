@@ -1,41 +1,52 @@
 flowchart LR
-    Main["<b>Main</b><br/>«client»<br/>the only client"]
-    FD["<b>FrontDesk</b> «Facade»<br/>(domain.service)<br/>single entry point"]
+    Main["Main<br/>«client»<br/>the only client"]
+    CFG["HotelConfiguration<br/>composition root<br/>wires the concrete classes"]
+    FD["FrontDesk «Facade»<br/>(domain.service)<br/>single entry point"]
 
-    subgraph payment["domain.payment  «Adapter»"]
+    subgraph calendar["domain.calendar  «Adapter»"]
         direction LR
-        PM["<b>PaymentMethod</b> «interface»<br/>implemented by CashPayment<br/>and CardPayment"]
-        CP["<b>CardPayment</b><br/>euros → cents<br/>status code → result"]
+        CE["CalendarExporter «interface»<br/>export(code, reservation)"]
+        ICS["IcsCalendarExporter<br/>LocalDate → Date<br/>reservation → VEvent"]
     end
 
-    subgraph external["external.payflow (third-party SDK)"]
-        PF["<b>PayFlowClient</b><br/>createCharge(token, cents, ...)"]
+    subgraph lib["biweekly library"]
+        BW["ICalendar · VEvent · Biweekly<br/>Biweekly.write(ical).go()"]
     end
 
     subgraph pricing["domain.pricing  «Decorator»"]
         direction LR
-        PA["<b>TouristTax / LoyaltyDiscount /<br/>WeekendSurcharge</b><br/>(PriceAdjustment)"]
-        BP["<b>BasePrice</b><br/>(PriceCalculator)"]
+        POL["PricingPolicy<br/>RuleBasedPricingPolicy"]
+        PA["TouristTax / LoyaltyDiscount /<br/>WeekendSurcharge<br/>(PriceAdjustment)"]
+        BP["BasePrice<br/>(PriceCalculator)"]
+    end
+
+    subgraph payment["domain.payment"]
+        PM["PaymentMethod «interface»<br/>CashPayment · CardPayment"]
+        PF["PayFlowClient<br/>simulated card gateway"]
     end
 
     subgraph service["domain.service"]
         direction LR
-        BS["<b>BookingSystem</b><br/>rooms + reservations"]
-        G["<b>ReservationNumberGenerator</b><br/>«Singleton» (Lab 1)"]
+        BS["BookingSystem «interface»<br/>InMemoryBookingSystem"]
+        G["ReservationNumberGenerator<br/>«Singleton» (Lab 1)"]
     end
 
-    subgraph lab1["domain.factory · domain.builder · domain.models  (Lab 1)"]
+    subgraph lab1["Lab 1 creational patterns"]
         direction LR
-        RF["<b>RoomFactory</b> + subclasses<br/>«Factory Method»"]
-        RB["<b>Reservation.Builder</b> ·<br/>ReservationDirector «Builder»"]
+        RF["RoomFactory + subclasses<br/>«Factory Method»"]
+        RB["Reservation.Builder ·<br/>ReservationDirector «Builder»"]
     end
 
     Main -- "openRoom · quote · bookRoom ·<br/>bookWeekendGetaway · bookBusinessTrip" --> FD
-    FD -- "pay()" --> PM
-    PM --> CP
-    CP -- "calls" --> PF
-    FD -- "calculate price" --> PA
+    Main -. "frontDesk()" .-> CFG
+    FD -- "pricingFor(guest)" --> POL
+    POL -- "stacks" --> PA
     PA -- "wraps" --> BP
+    FD -- "pay()" --> PM
+    PM --> PF
+    FD -- "export()" --> CE
+    CE --> ICS
+    ICS -- "calls" --> BW
     FD -- "find room · book · cancel" --> BS
     BS -- "next()" --> G
     FD -- "open rooms" --> RF
@@ -47,7 +58,7 @@ flowchart LR
     classDef ext fill:#eeeeee,stroke:#666,stroke-dasharray: 4 3,color:#000
     classDef plain fill:#f7f7f7,stroke:#999,color:#000
     class FD facade
-    class PM,CP adapter
-    class PA,BP decorator
-    class PF ext
-    class Main,BS,G,RF,RB plain
+    class CE,ICS adapter
+    class POL,PA,BP decorator
+    class BW ext
+    class Main,CFG,BS,G,RF,RB,PM,PF plain

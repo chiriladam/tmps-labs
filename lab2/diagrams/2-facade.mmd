@@ -1,42 +1,62 @@
 classDiagram
-    direction TB
+    direction LR
     class Main {
         <<client>>
+        +main(String[] args)
+    }
+    class HotelConfiguration {
+        <<composition root>>
+        +frontDesk()$ FrontDesk
+        +standardPricing()$ PricingPolicy
     }
     class FrontDesk {
         <<Facade>>
         -BookingSystem bookingSystem
-        -ReservationDirector packages
         -Map~RoomType, RoomFactory~ roomFactories
-        +openRoom(type, number)
-        +rooms() List~Room~
-        +quote(guest, type, checkIn, checkOut, guests) String
-        +bookRoom(guest, type, checkIn, checkOut, guests, payment) BookingResult
-        +bookWeekendGetaway(guest, friday, payment) BookingResult
-        +bookBusinessTrip(guest, checkIn, nights, payment) BookingResult
+        -ReservationDirector packages
+        -PricingPolicy pricingPolicy
+        -CalendarExporter calendar
+        +openRoom(RoomType type, int number)
+        +quote(Guest, RoomType, LocalDate checkIn, LocalDate checkOut, int guests) String
+        +bookRoom(Guest, RoomType, LocalDate checkIn, LocalDate checkOut, int guests, PaymentMethod) BookingResult
+        +bookWeekendGetaway(Guest, LocalDate friday, PaymentMethod) BookingResult
+        +bookBusinessTrip(Guest, LocalDate checkIn, int nights, PaymentMethod) BookingResult
         -book(...) BookingResult
-        -pricingFor(guest) PriceCalculator
-    }
-    class RoomFactory {
-        <<subsystem>>
-    }
-    class ReservationBuilder["Reservation.Builder / ReservationDirector"] {
-        <<subsystem>>
     }
     class BookingSystem {
-        <<subsystem>>
+        <<interface · subsystem>>
+        +findAvailableRoom(RoomType, LocalDate, LocalDate) Optional~Room~
+        +book(Reservation) Optional~String~
+        +cancel(String code) boolean
     }
-    class PriceCalculator {
+    class InMemoryBookingSystem
+    class RoomFactory {
+        <<abstract · subsystem>>
+        +openRoom(int number, BookingSystem) Room
+    }
+    class ReservationDirector {
         <<subsystem>>
+        +weekendGetaway(String, Room, LocalDate) Reservation
+        +businessTrip(String, Room, LocalDate, int) Reservation
+    }
+    class PricingPolicy {
+        <<interface · subsystem>>
+        +pricingFor(Guest) PriceCalculator
     }
     class PaymentMethod {
-        <<subsystem>>
+        <<interface · subsystem>>
+        +pay(double amountEur, String reference) PaymentResult
     }
-    Main --> FrontDesk : one simple call
-    FrontDesk --> RoomFactory : 0. open rooms
-    FrontDesk --> BookingSystem : 1. find room 4. book / cancel
-    FrontDesk --> ReservationBuilder : 2. build reservation
-    FrontDesk --> PriceCalculator : 3. calculate price
-    FrontDesk --> PaymentMethod : 5. take payment
-    note for FrontDesk "Main never touches the subsystems:
-it only calls FrontDesk methods"
+    class CalendarExporter {
+        <<interface · subsystem>>
+        +export(String reservationCode, Reservation) String
+    }
+    Main --> FrontDesk : calls only the facade
+    Main ..> HotelConfiguration : frontDesk()
+    FrontDesk o-- BookingSystem : (1) find room, (4) book or cancel
+    FrontDesk o-- RoomFactory : open rooms
+    FrontDesk o-- ReservationDirector : (2) build reservation
+    FrontDesk o-- PricingPolicy : (3) calculate price
+    FrontDesk ..> PaymentMethod : (5) take payment
+    FrontDesk o-- CalendarExporter : (6) calendar invite
+    BookingSystem <|.. InMemoryBookingSystem

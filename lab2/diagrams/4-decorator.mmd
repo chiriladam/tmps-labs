@@ -21,15 +21,28 @@ classDiagram
     }
     class WeekendSurcharge {
         <<Concrete Decorator>>
-        +20% room price per Fri/Sat night
+        #adjustment(Reservation, double) double
     }
     class LoyaltyDiscount {
         <<Concrete Decorator>>
-        -10% of the price so far
+        #adjustment(Reservation, double) double
     }
     class TouristTax {
         <<Concrete Decorator>>
-        +1.50 EUR per guest per night
+        #adjustment(Reservation, double) double
+    }
+    class PricingPolicy {
+        <<interface>>
+        +pricingFor(Guest guest) PriceCalculator
+    }
+    class RuleBasedPricingPolicy {
+        -List~PricingRule~ rules
+        +pricingFor(Guest guest) PriceCalculator
+    }
+    class PricingRule {
+        <<record>>
+        +Predicate~Guest~ appliesTo
+        +UnaryOperator~PriceCalculator~ decorator
     }
     PriceCalculator <|.. BasePrice
     PriceCalculator <|.. PriceAdjustment
@@ -37,6 +50,9 @@ classDiagram
     PriceAdjustment <|-- WeekendSurcharge
     PriceAdjustment <|-- LoyaltyDiscount
     PriceAdjustment <|-- TouristTax
+    PricingPolicy <|.. RuleBasedPricingPolicy
+    RuleBasedPricingPolicy o-- PricingRule
+    RuleBasedPricingPolicy ..> PriceCalculator : stacks decorators
     note for PriceAdjustment "calculate() = wrapped.calculate() + adjustment()
 Stack for a loyalty member:
 TouristTax( LoyaltyDiscount( WeekendSurcharge( BasePrice ) ) )"
